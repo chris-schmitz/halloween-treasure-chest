@@ -31,7 +31,6 @@ void setup()
     // * Servo setup
     lid.write(startingAngle);
     lid.attach(LID_PIN);
-    lid.write(endingAngle);
 
     // * Ultrasonic setup
     pinMode(TRIGGER_PIN, OUTPUT);
@@ -42,14 +41,17 @@ void setup()
     FastLED.setBrightness(BRIGHTNESS);
 }
 
-unsigned long servoInterval = 5;
+unsigned long servoInterval = 50;
 unsigned long servoIntervalLastChecked = 0;
-int i = startingAngle;
-bool openLid = true;
+unsigned int currentAngle = startingAngle;
+unsigned int targetAngle = startingAngle;
 
-unsigned long ultrasonicInterval = 1000;
+unsigned long ultrasonicInterval = 500;
 unsigned long ultrasonicIntervalLastChecked = 0;
 float lidActivationThreshold = 30.0; // * in cm
+
+unsigned long ledStripInterval = 1000 / FRAMES_PER_SECOND;
+unsigned long ledStripIntervalLastChecked = 0;
 
 void loop()
 {
@@ -67,74 +69,61 @@ void loop()
         float duration = pulseIn(ECHO_PIN, HIGH);
         float distance = (duration * 0.0343) / 2;
 
-        Serial.print("Distance to object: ");
-        Serial.println(distance);
-
         if (distance < lidActivationThreshold)
         {
-            long angle = map(distance, 0, lidActivationThreshold, endingAngle, startingAngle);
-            Serial.print("Angle to open the lid to: ");
+            long angle = map(distance, lidActivationThreshold, 0, startingAngle, endingAngle);
+
+            Serial.print("Setting target angle to:");
             Serial.println(angle);
-            lid.write(angle);
+            targetAngle = angle;
         }
 
         ultrasonicIntervalLastChecked = now;
     }
 
-    // if (now - servoIntervalLastChecked >= servoInterval)
-    // {
-    //     Serial.println(i);
-    //     lid.write(i);
-    //     if (openLid)
-    //     {
-    //         i++;
-    //         if (i >= endingAngle)
-    //         {
-    //             openLid = false;
-    //         }
-    //     }
-    //     else
-    //     {
-    //         i--;
-    //         if (i <= startingAngle)
-    //         {
-    //             openLid = true;
-    //         }
-    //     }
-
-    //     servoIntervalLastChecked = now;
-    // }
-
-    Fire2012();
-    FastLED.show();
-    FastLED.delay(1000 / FRAMES_PER_SECOND);
-
-    /*
-    digitalWrite(TRIGGER_PIN, LOW);
-    delayMicroseconds(2);
-    digitalWrite(TRIGGER_PIN, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(TRIGGER_PIN, LOW);
-
-    float duration = pulseIn(ECHO_PIN, HIGH);
-    float distance = (duration * 0.0343) / 2;
-
-    Serial.print("Distance to object: ");
-    Serial.println(distance);
-
-    for (int i = startingAngle; i < endingAngle; i++)
+    if (now - servoIntervalLastChecked >= servoInterval)
     {
-        // Serial.println(i);
-        lid.write(i);
-        delay(100);
+        servoStepTowardsTarget();
     }
-    for (int i = endingAngle; i >= startingAngle; i--)
+
+    if (now - ledStripIntervalLastChecked >= ledStripInterval && targetAngle > startingAngle)
     {
-        // Serial.println(i);
-        lid.write(i);
-        delay(100);
+        Fire2012();
+        FastLED.show();
+        ledStripIntervalLastChecked = now;
     }
-    */
+}
+
+void servoStepTowardsTarget()
+{
+    if (targetAngle - currentAngle == 0)
+    {
+        // Serial.println("At the target angle, early exit");
+        return;
+    }
+
+    int difference = targetAngle - currentAngle;
+
+    Serial.print("Target angle: ");
+    Serial.print(targetAngle);
+    Serial.print(" Current angle: ");
+    Serial.print(currentAngle);
+    Serial.print(" difference: ");
+    Serial.println(difference);
+
+    if (difference > 0)
+    {
+        currentAngle++;
+        currentAngle = min(currentAngle, endingAngle);
+    }
+    else
+    {
+        // Serial.println("Negative move towards the target");
+        currentAngle--;
+        currentAngle = max(currentAngle, startingAngle);
+    }
+
+    lid.write(currentAngle);
 }
 
 // Fire2012 by Mark Kriegsman, July 2012
